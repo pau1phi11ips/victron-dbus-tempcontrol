@@ -1,5 +1,5 @@
 # victron-dbus-tempcontrol
-Read the internal temperature sensor of Victron Smartsolar MPPT
+Read the internal temperature sensor of Victron Smartsolar MPPT - This one works to just read the temps from the smaller MPPTs without the relay
 
 Tested with Smartsolar 150/35, Smartsolar is connected via VE.Direct.
 
