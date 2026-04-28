@@ -43,7 +43,7 @@ def to_native_type(data):
 
 
 class TempControl():
-    def __init__(self, servicename, deviceinstance, id, mpptid, relayControl, offTemp, onTemp):
+    def __init__(self, servicename, deviceinstance, id, mpptid):
         logging.debug('Initialize Service...')
 
 
@@ -51,13 +51,9 @@ class TempControl():
         self.settings = None 
         self.id = id
         self.mpptid = mpptid
-        self.relayControl = relayControl
-        self.offTemp = offTemp
-        self.onTemp = onTemp
         self.mppt01power = 0
         self.deviceinstance = deviceinstance
         self.dbusConn = dbus.SessionBus(private=True) if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus(private=True)
-        self.mppt01relay = VeDbusItemImport(self.dbusConn, id, '/Relay/0/State')
         self.mppt01serial = VeDbusItemImport(self.dbusConn, id, '/Serial')
         self.mppt01tempObj = self.dbusConn.get_object(id, '/Devices/0/VregLink')
         self.mppt01powerObj = VeDbusItemImport(self.dbusConn,id,'/Yield/Power')
@@ -78,8 +74,6 @@ class TempControl():
         self._dbusserviceMppt01.add_path('/TemperatureType', self.settings['/TemperatureType'], writeable=True, onchangecallback=self.tempTypeChanged)
         self._dbusserviceMppt01.add_path('/Connected', 1)
         self._dbusserviceMppt01.register()
-        if self.relayControl:
-            self.updateMppt01RelayMode()
 
 
 
@@ -112,16 +106,6 @@ class TempControl():
           self._dbusserviceMppt01['/CustomName'] = newvalue
         if setting == '/TemperatureType':
           self._dbusserviceMppt01['/TemperatureType'] = newvalue
-    
-    def updateMppt01RelayMode(self):
-        args = [60889]
-        ret = self.mppt01tempObj.get_dbus_method('GetVreg','com.victronenergy.VregLink')(*args)
-        data = to_native_type(ret[1])
-        logging.info("MPPT%02d Relay mode: %d" % (self.mpptid, data[0]))
-        if ( data[0] != 255):
-            args = [60889, [255,0,0,0] ]
-            ret = self.mppt01tempObj.get_dbus_method('SetVreg','com.victronenergy.VregLink')(*args)
-            logging.info("MPPT%02d Relay mode changed to external control" % self.mpptid)
 
     def readMppt01Temp(self):
         args = [60891]
@@ -137,14 +121,7 @@ class TempControl():
         self.readMppt01Temp()
         self.readMppt01Power()
         self._dbusserviceMppt01['/Temperature'] = self.mppt01temp
-        if ( self.relayControl ):
-            logging.info("Check temp for MPPT%02d" % self.mpptid)
-            if ( self.mppt01power > 0 and self.mppt01temp >= self.onTemp and self.mppt01relay.get_value() != 1):
-               self.mppt01relay.set_value(1)
-            elif ( ( self.mppt01power <=0 or self.mppt01temp <= self.offTemp ) and self.mppt01relay.get_value() != 0 ):
-               self.mppt01relay.set_value(0)
         logging.info("MPPT%02d Temperature: %.02f" % (self.mpptid , self.mppt01temp))
-        logging.info("MPPT%02d Relay State: %d" % (self.mpptid , self.mppt01relay.get_value()))
         return True
 
 def getConfig():
@@ -187,10 +164,7 @@ def main():
             mpptid = x
             deviceinstance = int(config['MPPT%02d' % x]['deviceinstance'])
             id = config['MPPT%02d' % x]['id']
-            relayControl = config['MPPT%02d' % x]['relayControl'] == 'True'
-            onTemp = float(config['MPPT%02d' % x]['onTemp'])
-            offTemp = float(config['MPPT%02d' %x]['offTemp'])
-            dbusservice['%02d' % x] = TempControl(mpptid=x, servicename='com.victronenergy.temperature',deviceinstance=deviceinstance,id=id,relayControl = relayControl,onTemp = onTemp, offTemp = offTemp)
+            dbusservice['%02d' % x] = TempControl(mpptid=x, servicename='com.victronenergy.temperature',deviceinstance=deviceinstance,id=id)
             GLib.timeout_add(updateInterval, dbusservice['%02d' %x].update)
             dbusservice['%02d' % x].update()
 
