@@ -130,6 +130,13 @@ def getConfig():
     return config;
 
 
+def discover_solar_chargers():
+    bus = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
+    proxy = bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus')
+    iface = dbus.Interface(proxy, 'org.freedesktop.DBus')
+    names = iface.ListNames()
+    return sorted(str(n) for n in names if str(n).startswith('com.victronenergy.solarcharger.'))
+
 
 def main():
         print (" *********************************************** ")
@@ -153,20 +160,25 @@ def main():
         DBusGMainLoop(set_as_default=True)
 
         dbusservice = {}
-     
+
         mainloop = GLib.MainLoop()
 
-        mpptCount = int(config['DEFAULT']['mpptcount'])
         updateInterval = int(config['DEFAULT']['updateInterval'])
-        logging.info("Found %d MPPT configs" % mpptCount)
+        deviceInstanceBase = int(config['DEFAULT'].get('deviceinstancebase', '22'))
 
-        for x in range(1,mpptCount+1):
-            mpptid = x
-            deviceinstance = int(config['MPPT%02d' % x]['deviceinstance'])
-            id = config['MPPT%02d' % x]['id']
-            dbusservice['%02d' % x] = TempControl(mpptid=x, servicename='com.victronenergy.temperature',deviceinstance=deviceinstance,id=id)
-            GLib.timeout_add(updateInterval, dbusservice['%02d' %x].update)
-            dbusservice['%02d' % x].update()
+        chargers = discover_solar_chargers()
+        logging.info("Discovered %d solar charger(s): %s" % (len(chargers), chargers))
+
+        if not chargers:
+            logging.error("No solar chargers found on DBus — exiting")
+            sys.exit(1)
+
+        for i, charger_id in enumerate(chargers):
+            mpptid = i + 1
+            deviceinstance = deviceInstanceBase + i
+            dbusservice['%02d' % mpptid] = TempControl(mpptid=mpptid, servicename='com.victronenergy.temperature', deviceinstance=deviceinstance, id=charger_id)
+            GLib.timeout_add(updateInterval, dbusservice['%02d' % mpptid].update)
+            dbusservice['%02d' % mpptid].update()
 
         mainloop.run()
 
